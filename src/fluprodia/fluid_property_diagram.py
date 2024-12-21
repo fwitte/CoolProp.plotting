@@ -500,7 +500,7 @@ class FluidPropertyDiagram:
                 )
                 raise ValueError(msg)
 
-    def _draw_isoline_label(self, fig, ax, isoline, property, idx, x, y, x_min, x_max, y_min, y_max):
+    def _draw_isoline_label(self, fig, ax, isoline, property, idx, x, y, x_min, x_max, y_min, y_max, latex_units):
         """Draw a label for an isoline.
 
         Parameters
@@ -561,7 +561,10 @@ class FluidPropertyDiagram:
 
             alpha = np.arctan(y_scaled / x_scaled) / (2 * np.pi) * 360
 
-        unit = _beautiful_unit_string(self.units[property])
+        if latex_units:
+            unit = _beautiful_unit_string(self.units[property])
+        else:
+            unit = self.units[property]
 
         txt = f'{isoline} {unit}'
         text_bg_color = ax.get_facecolor()
@@ -1104,8 +1107,8 @@ class FluidPropertyDiagram:
 
         return datapoints
 
-    def draw_isolines(self, fig, ax, diagram_type, x_min, x_max, y_min, y_max, isoline_data=None):
-        """_summary_
+    def draw_isolines(self, fig, ax, diagram_type, x_min, x_max, y_min, y_max, isoline_data=None, latex_units=True):
+        """Draw the isolines onto an axes within a matplotlib figure
 
         Parameters
         ----------
@@ -1132,15 +1135,23 @@ class FluidPropertyDiagram:
 
         isoline_data : dict, optional
             Dictionary holding additional data on the isolines to be drawn,
-            by default None. These are
+            by default None. These are per isoline type
 
-            - the isoline values with key :code:`values` and
-            - the isoline style with key :code:`style`.
+            - the isoline values with key :code:`values`,
+            - the isoline style with key :code:`style`,
+            - the number of labels per isoline :code:`labels_per_line`
+              (default: 1) and
+            - label every n-th line only :code:`label_every_nth` (default: 1)
+
+            following this structure: {"Q": {"values": np.array([0.0, 1.0])}}
 
             The islonline style is another dictionary holding keyword arguments
             of a :code:`matplotlib.lines.Line2D` object. See
             https://matplotlib.org/stable/api/_as_gen/matplotlib.lines.Line2D.html
             for more information.
+
+        latex_units : bool, optional
+            Axis and isoline labels using LaTeX style units, by default True
         """
         if isoline_data is None:
             isoline_data = {}
@@ -1177,6 +1188,8 @@ class FluidPropertyDiagram:
             data = getattr(self, property)
 
             isovalues = data['isolines']
+            labels_per_line = 1
+            label_every_nth = 1
 
             if isoline in isoline_data.keys():
                 keys = isoline_data[isoline].keys()
@@ -1193,7 +1206,13 @@ class FluidPropertyDiagram:
                         isoline_data[isoline]['label_position']
                     )
 
-            for isoval in isovalues.round(8):
+                if 'label_every_nth' in keys:
+                    label_every_nth = isoline_data[isoline]['label_every_nth']
+
+                if 'labels_per_line' in keys:
+                    labels_per_line = isoline_data[isoline]['labels_per_line']
+
+            for i, isoval in enumerate(isovalues.round(8)):
                 if isoval not in data['isolines'].round(8):
                     msg = (
                         f'Could not find data for {property} isoline with '
@@ -1227,14 +1246,21 @@ class FluidPropertyDiagram:
 
                 ax.plot(x, y, **data['style'])
 
-                isoval = self.convert_from_SI(isoval, isoline)
+                if i % label_every_nth == 0:
+                    isoval = self.convert_from_SI(isoval, isoline)
 
-                self._draw_isoline_label(
-                    fig, ax,
-                    isoval.round(8), isoline,
-                    int(data['label_position'] * len(x)),
-                    x, y, x_min, x_max, y_min, y_max
-                )
+                    label_positions = [int(data['label_position'] * len(x))]
+                    if labels_per_line > 1:
+                        label_positions = np.linspace(
+                            0.05, 0.95, labels_per_line
+                        ) * len(x)
+                    for label_position in label_positions:
+                        self._draw_isoline_label(
+                            fig, ax,
+                            isoval.round(8), isoline,
+                            int(label_position),
+                            x, y, x_min, x_max, y_min, y_max, latex_units
+                        )
 
     def _check_diagram_types(self, diagram_type):
         if not isinstance(diagram_type, str):
